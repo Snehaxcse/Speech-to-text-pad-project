@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Speech-to-Text Pad — Pro Edition</title>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #e9eef5;
+      font-family: "Inter", sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .container {
+      width: 760px;
+      background: #fff;
+      padding: 32px;
+      border-radius: 18px;
+      box-shadow: 0 6px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 30px;
+      font-weight: 600;
+      color: #222;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+
+    textarea {
+      width: 100%;
+      height: 180px;
+      padding: 16px;
+      margin-top: 14px;
+      border-radius: 14px;
+      border: 1px solid #cfd4dd;
+      background: #f8fafc;
+      font-size: 16px;
+      resize: none;
+      outline: none;
+      transition: 0.2s;
+    }
+
+    textarea:focus {
+      border-color: #4c8bf5;
+      background: #ffffff;
+    }
+
+
+    .buttons {
+      margin-top: 18px;
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      padding: 12px 22px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+      color: #fff;
+      transition: 0.2s;
+      font-weight: 500;
+    }
+
+    #startBtn {
+      background: #43a047;
+    }
+
+    #stopBtn {
+      background: #e53935;
+    }
+
+    #saveBtn {
+      background: #1e88e5;
+    }
+
+    button:hover {
+      filter: brightness(1.1);
+    }
+
+
+    .mic-status {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      color: #333;
+    }
+
+    .dot {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      transition: 0.25s;
+    }
+
+    .dot.silent {
+      background: #bbb;
+    }
+
+    .dot.noise {
+      background: #f1c40f;
+    }
+
+    .dot.speech {
+      background: #43a047;
+      animation: pulse 0.8s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+
+      50% {
+        transform: scale(1.2);
+        opacity: 1;
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+    }
+
+
+    h3 {
+      margin-top: 32px;
+      font-size: 22px;
+    }
+
+    .note {
+      background: #ffffff;
+      padding: 18px 20px;
+      border-radius: 14px;
+      border-left: 5px solid #4c8bf5;
+      margin-bottom: 15px;
+      position: relative;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+
+    .delete-btn {
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      background: #ff5252;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h2>🎤 Speech-to-Text Pad</h2>
+
+    <textarea id="textBox" placeholder="Start speaking and your text will appear here..."></textarea>
+
+    <div class="buttons">
+      <button id="startBtn">Start Listening</button>
+      <button id="stopBtn">Stop Listening</button>
+      <button id="saveBtn">Save Note</button>
+    </div>
+
+    <div class="mic-status">
+      <div class="dot silent" id="micDot"></div>
+      <span id="micLabel">Idle</span>
+    </div>
+
+    <h3>Saved Notes</h3>
+    <div id="noteList"></div>
+  </div>
+
+  <script>
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) alert("Your browser does not support Speech Recognition.");
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+
+    const textBox = document.getElementById("textBox");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const micDot = document.getElementById("micDot");
+    const micLabel = document.getElementById("micLabel");
+    const noteList = document.getElementById("noteList");
+
+    let finalTranscript = "";
+    let isListening = false;
+    let lastUpdate = Date.now();
+
+
+    function smartPunctuation(text) {
+      text = text.trim();
+      if (!text) return "";
+
+
+      if (/[.!?]$/.test(text)) return text + " ";
+
+
+      const questionStarters = ["who", "what", "when", "where", "why", "how", "is", "are", "do", "does"];
+      const firstWord = text.split(" ")[0].toLowerCase();
+
+      if (questionStarters.includes(firstWord)) {
+        return text + "? ";
+      }
+
+      return text + ". ";
+    }
+
+
+    function autoCapitalize(text) {
+      return text.replace(/(^\w|[.!?]\s+\w)/g, match => match.toUpperCase());
+    }
+
+
+    function updateMic(status) {
+      micDot.className = "dot " + status;
+      micLabel.textContent = status === "speech"
+        ? "Speech Detected"
+        : status === "noise"
+          ? "Noise / Background"
+          : status === "silent"
+            ? "Silent"
+            : "Idle";
+    }
+
+    recognition.onsoundstart = () => updateMic("noise");
+    recognition.onspeechstart = () => updateMic("speech");
+    recognition.onsspeechend = () => updateMic("noise");
+    recognition.onsoundend = () => updateMic("silent");
+
+    recognition.onresult = (event) => {
+      let interim = "";
+
+      for (let i = 0; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript.trim();
+
+        if (event.results[i].isFinal) {
+          const now = Date.now();
+          const gap = now - lastUpdate;
+
+          if (gap > 800) {
+            finalTranscript += smartPunctuation(transcript);
+          } else {
+            finalTranscript += transcript + " ";
+          }
+
+          lastUpdate = now;
+        } else {
+          interim += transcript + " ";
+        }
+      }
+
+      const formatted = autoCapitalize(finalTranscript + interim);
+      textBox.value = formatted;
+    };
+
+    recognition.onerror = (e) => {
+      console.warn("Speech Recognition Error:", e.error);
+    };
+
+    startBtn.onclick = () => {
+      if (isListening) return;
+      recognition.start();
+      isListening = true;
+      micLabel.textContent = "Listening…";
+    };
+
+    stopBtn.onclick = () => {
+      if (!isListening) return;
+      recognition.stop();
+      isListening = false;
+      updateMic("silent");
+      micLabel.textContent = "Stopped";
+    };
+
+    saveBtn.onclick = () => {
+      const content = textBox.value.trim();
+      if (!content) return;
+
+      const note = document.createElement("div");
+      note.className = "note";
+      note.textContent = content;
+
+      const del = document.createElement("button");
+      del.textContent = "Delete";
+      del.className = "delete-btn";
+      del.onclick = () => note.remove();
+
+      note.appendChild(del);
+      noteList.prepend(note);
+
+      textBox.value = "";
+      finalTranscript = "";
+    };
+  </script>
+
+</body>
+
+</html>
